@@ -1,0 +1,125 @@
+# Automation: Set Tomorrow's Heating Profile from Calendar
+#
+# Each evening this automation checks a Home Assistant calendar for events
+# tomorrow and sets every Heatmiser thermostat to the matching profile.
+#
+# Calendar event keywords (case-insensitive):
+#   "holiday"    → frost-protection temperature all day
+#   "nonworkday" → day-off schedule (lie-in, home all day)
+#   "workday"    → forces workday schedule even on weekends (e.g. a Saturday shift)
+#
+# Default (no calendar event):
+#   Mon–Thu → workday
+#   Fri     → nonworkday
+#   Sat–Sun → weekend
+#
+# Requirements:
+#   - calendar.homeautomation (replace with your HA calendar entity)
+#   - heatmiser_schedule_manager installed and configured
+#   - Profiles defined in heatmiser_schedule_profiles.yaml
+
+- id: set_tomorrow_heatmiser_heating_profile
+  alias: Set Tomorrow's Heatmiser Heating Profile
+  description: >
+    Each evening at 21:30, check tomorrow's calendar for holiday/nonworkday/workday
+    events and set all Heatmiser thermostats to the appropriate schedule profile.
+  triggers:
+    - trigger: time
+      at: "21:30:00"
+  conditions: []
+  actions:
+    # Step 1: Read tomorrow's calendar events
+    - action: calendar.get_events
+      target:
+        entity_id: calendar.homeautomation
+      data:
+        start_date_time: >
+          {{ (today_at('00:00') + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S') }}
+        duration:
+          hours: 24
+      response_variable: tomorrow_events
+
+    # Step 2: Determine tomorrow's day and what calendar events exist
+    - variables:
+        tomorrow_day: "{{ (now() + timedelta(days=1)).weekday() }}"
+        tomorrow_day_name: "{{ (now() + timedelta(days=1)).strftime('%A').lower() }}"
+        events: "{{ tomorrow_events['calendar.homeautomation'].events }}"
+        has_holiday: >
+          {{ events | selectattr('summary', 'search', 'holiday', ignorecase=True)
+             | list | length > 0 }}
+        has_nonworkday: >
+          {{ events | selectattr('summary', 'search', 'nonworkday', ignorecase=True)
+             | list | length > 0 }}
+        has_workday: >
+          {{ events | selectattr('summary', 'search', 'workday', ignorecase=True)
+             | list | length > 0 }}
+
+    # Step 3: Choose the profile
+    - variables:
+        chosen_profile: >
+          {% if has_holiday %}
+            holiday
+          {% elif has_nonworkday %}
+            nonworkday
+          {% elif has_workday and tomorrow_day in [5, 6] %}
+            wfh
+          {% elif has_workday %}
+            workday
+          {% elif tomorrow_day in [0, 1, 2, 3] %}
+            workday
+          {% elif tomorrow_day == 4 %}
+            nonworkday
+          {% else %}
+            weekend
+          {% endif %}
+        chosen_profile_label: >
+          {% if has_holiday %}
+            Holiday
+          {% elif has_nonworkday %}
+            Non-workday
+          {% elif has_workday and tomorrow_day in [5, 6] %}
+            WFH (weekend workday)
+          {% elif has_workday %}
+            Workday
+          {% elif tomorrow_day in [0, 1, 2, 3] %}
+            Workday
+          {% elif tomorrow_day == 4 %}
+            Non-workday
+          {% else %}
+            Weekend
+          {% endif %}
+
+    # Step 4: Apply the profile to every thermostat
+    - action: heatmiser_schedule_manager.set_day_schedule
+      data:
+        device_name: Bathroom
+        day: "{{ tomorrow_day_name }}"
+        profile: "{{ chosen_profile | trim }}"
+
+    - action: heatmiser_schedule_manager.set_day_schedule
+      data:
+        device_name: Dining
+        day: "{{ tomorrow_day_name }}"
+        profile: "{{ chosen_profile | trim }}"
+
+    - action: heatmiser_schedule_manager.set_day_schedule
+      data:
+        device_name: En Suite Bathroom
+        day: "{{ tomorrow_day_name }}"
+        profile: "{{ chosen_profile | trim }}"
+
+    - action: heatmiser_schedule_manager.set_day_schedule
+      data:
+        device_name: Kitchen and Hall
+        day: "{{ tomorrow_day_name }}"
+        profile: "{{ chosen_profile | trim }}"
+
+    # Step 5: Send a notification (optional — remove if not needed)
+    - action: notify.pushover
+      data:
+        title: HEATING
+        message: >
+          Heatmiser heating for tomorrow ({{ tomorrow_day_name }})
+          set to {{ chosen_profile_label | trim }}
+
+  mode: single

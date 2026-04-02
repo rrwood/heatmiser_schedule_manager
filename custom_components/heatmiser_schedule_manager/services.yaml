@@ -1,0 +1,135 @@
+set_day_schedule:
+  name: Set Day Schedule
+  description: >
+    Update the heating schedule for a specific day on a Heatmiser Neo thermostat.
+    Either 'profile' (named preset from heatmiser_schedule_profiles.yaml) or
+    'schedule' (custom setpoints) must be provided.
+  fields:
+    device_name:
+      name: Thermostat
+      description: The name of the thermostat as shown in Home Assistant.
+      required: true
+      selector:
+        select:
+          custom_value: true
+          options:
+            - "Bathroom"
+            - "Dining"
+            - "En Suite Bathroom"
+            - "Kitchen and Hall"
+    day:
+      name: Day
+      description: The day of the week to update.
+      required: true
+      selector:
+        select:
+          options:
+            - monday
+            - tuesday
+            - wednesday
+            - thursday
+            - friday
+            - saturday
+            - sunday
+    profile:
+      name: Profile
+      description: >
+        Profile name from heatmiser_schedule_profiles.yaml. Mutually exclusive with 'schedule'.
+        Type a custom name if it isn't listed.
+      required: false
+      selector:
+        select:
+          custom_value: true
+          options:
+            - workday
+            - weekend
+            - wfh
+            - holiday
+            - all_day_comfort
+            - eco
+            - nonworkday
+    schedule:
+      name: Custom Schedule
+      description: >
+        Custom list of time/temperature setpoints. Mutually exclusive with 'profile'.
+        Up to 4 setpoints (or 6 for 6-level hubs).
+      required: false
+      example:
+        - time: "06:30"
+          temp: 19.0
+        - time: "22:00"
+          temp: 16.0
+      selector:
+        object:
+
+set_week_schedule:
+  name: Set Week Schedule
+  description: >
+    Apply the same profile to every day slot on a thermostat in one operation.
+    Useful for initialising a device or resetting all days to a baseline.
+  fields:
+    device_name:
+      name: Thermostat
+      description: The name of the thermostat as shown in Home Assistant.
+      required: true
+      selector:
+        select:
+          custom_value: true
+          options:
+            - "Bathroom"
+            - "Dining"
+            - "En Suite Bathroom"
+            - "Kitchen and Hall"
+    profile:
+      name: Profile
+      description: >
+        Profile name from heatmiser_schedule_profiles.yaml. Mutually exclusive with 'schedule'.
+      required: false
+      selector:
+        select:
+          custom_value: true
+          options:
+            - workday
+            - weekend
+            - wfh
+            - holiday
+            - all_day_comfort
+            - eco
+            - nonworkday
+    schedule:
+      name: Custom Schedule
+      description: >
+        Custom list of time/temperature setpoints. Mutually exclusive with 'profile'.
+      required: false
+      example:
+        - time: "06:30"
+          temp: 19.0
+        - time: "22:00"
+          temp: 16.0
+      selector:
+        object:
+
+get_schedule:
+  name: Get Schedule
+  description: >
+    Read and log the current heating schedule for a thermostat.
+    Returns the full schedule as a response and logs each day to home-assistant.log.
+  fields:
+    device_name:
+      name: Thermostat
+      description: The name of the thermostat to read.
+      required: true
+      selector:
+        select:
+          custom_value: true
+          options:
+            - "Bathroom"
+            - "Dining"
+            - "En Suite Bathroom"
+            - "Kitchen and Hall"
+
+reload_profiles:
+  name: Reload Profiles
+  description: >
+    Reload heating schedule profiles from heatmiser_schedule_profiles.yaml
+    without restarting Home Assistant.

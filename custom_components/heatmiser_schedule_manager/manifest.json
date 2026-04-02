@@ -1,0 +1,13 @@
+{
+  "domain": "heatmiser_schedule_manager",
+  "name": "Heatmiser Schedule Manager",
+  "codeowners": ["@rrwood"],
+  "config_flow": true,
+  "dependencies": ["heatmiserneo"],
+  "documentation": "https://github.com/rrwood/heatmiser_schedule_manager",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/rrwood/heatmiser_schedule_manager/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

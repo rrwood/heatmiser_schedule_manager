@@ -1,0 +1,56 @@
+# Automation: Activate Holiday Mode on All Thermostats
+#
+# When a "holiday_active" input_boolean is turned on, immediately sets every
+# thermostat to the holiday (frost-protection) profile for the full week.
+# When turned off, runs the calendar automation to restore normal schedules.
+#
+# Setup required:
+#   Settings → Helpers → Create → Toggle (input_boolean.holiday_active)
+
+- id: heatmiser_holiday_mode_on
+  alias: "Heatmiser: Activate Holiday Mode"
+  description: >
+    When holiday mode is switched on, set all thermostats to the holiday
+    (frost protection) profile for every day of the week.
+  triggers:
+    - trigger: state
+      entity_id: input_boolean.holiday_active
+      to: "on"
+  actions:
+    - repeat:
+        for_each:
+          - Bathroom
+          - Dining
+          - En Suite Bathroom
+          - Kitchen and Hall
+        sequence:
+          - action: heatmiser_schedule_manager.set_week_schedule
+            data:
+              device_name: "{{ repeat.item }}"
+              profile: holiday
+    - action: notify.pushover
+      data:
+        title: HEATING
+        message: "Holiday mode activated — all thermostats set to frost protection."
+  mode: single
+
+- id: heatmiser_holiday_mode_off
+  alias: "Heatmiser: Deactivate Holiday Mode"
+  description: >
+    When holiday mode is switched off, trigger the calendar automation to
+    restore the correct schedule for each thermostat.
+  triggers:
+    - trigger: state
+      entity_id: input_boolean.holiday_active
+      to: "off"
+  actions:
+    - action: automation.trigger
+      target:
+        entity_id: automation.set_tomorrow_s_heatmiser_heating_profile
+      data:
+        skip_condition: true
+    - action: notify.pushover
+      data:
+        title: HEATING
+        message: "Holiday mode deactivated — normal schedules restored."
+  mode: single

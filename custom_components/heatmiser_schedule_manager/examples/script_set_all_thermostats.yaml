@@ -1,0 +1,48 @@
+# Script: Set All Thermostats to a Named Profile
+#
+# A reusable script that applies one profile to every day of every thermostat.
+# Useful for quick manual overrides (e.g. an unexpected day off).
+#
+# Call from Developer Tools → Services → script.heatmiser_set_all_profile
+# or from another automation/script with:
+#
+#   action: script.heatmiser_set_all_profile
+#   data:
+#     profile: nonworkday
+
+heatmiser_set_all_profile:
+  alias: "Heatmiser: Set All Thermostats to Profile"
+  description: >
+    Apply a named profile to every day slot on every Heatmiser thermostat.
+  fields:
+    profile:
+      name: Profile
+      description: >
+        Profile name as defined in heatmiser_schedule_profiles.yaml
+        (e.g. workday, weekend, wfh, holiday, nonworkday, eco, all_day_comfort).
+      required: true
+      selector:
+        select:
+          custom_value: true
+          options:
+            - workday
+            - weekend
+            - wfh
+            - holiday
+            - all_day_comfort
+            - eco
+            - nonworkday
+  sequence:
+    - repeat:
+        for_each:
+          - Bathroom
+          - Dining
+          - En Suite Bathroom
+          - Kitchen and Hall
+        sequence:
+          - action: heatmiser_schedule_manager.set_week_schedule
+            data:
+              device_name: "{{ repeat.item }}"
+              profile: "{{ profile }}"
+  mode: single
+  icon: mdi:thermometer-lines

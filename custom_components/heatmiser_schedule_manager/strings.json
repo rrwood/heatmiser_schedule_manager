@@ -1,0 +1,14 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Heatmiser Schedule Manager",
+        "description": "This integration extends your existing Heatmiser Neo integration to allow setting per-day heating schedules via service calls. Click Submit to configure."
+      }
+    },
+    "abort": {
+      "already_configured": "Schedule Manager is already configured for this hub.",
+      "heatmiserneo_not_configured": "The Heatmiser Neo integration is not configured. Set it up first, then add Heatmiser Schedule Manager."
+    }
+  }
+}

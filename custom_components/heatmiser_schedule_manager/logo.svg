@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" width="600" height="200">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5921E"/>
+      <stop offset="100%" stop-color="#C86400"/>
+    </linearGradient>
+    <linearGradient id="dialGrad" x1="30%" y1="0%" x2="70%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#EDEDED"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon portion (left square) -->
+  <rect width="200" height="200" rx="30" ry="30" fill="url(#bg)"/>
+
+  <!-- Thermostat outer glow -->
+  <circle cx="84" cy="86" r="60" fill="none" stroke="white" stroke-width="5" opacity="0.25"/>
+
+  <!-- Thermostat face -->
+  <circle cx="84" cy="86" r="54" fill="url(#dialGrad)"/>
+
+  <!-- Temperature arc -->
+  <circle cx="84" cy="86" r="60" fill="none" stroke="white" stroke-width="6"
+          stroke-dasharray="141 377" stroke-dashoffset="59"
+          stroke-linecap="round" opacity="0.85"/>
+
+  <!-- Centre hub -->
+  <circle cx="84" cy="86" r="12" fill="#F5921E"/>
+  <circle cx="84" cy="86" r="5" fill="white"/>
+
+  <!-- Needle -->
+  <line x1="84" y1="86" x2="57" y2="52" stroke="#555" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Calendar card -->
+  <rect x="118" y="116" width="72" height="68" rx="9" fill="#1B2838"/>
+  <rect x="118" y="116" width="72" height="18" rx="9" fill="#F5921E"/>
+  <rect x="118" y="126" width="72" height="8" fill="#F5921E"/>
+
+  <!-- Binder rings -->
+  <rect x="131" y="109" width="7" height="14" rx="3.5" fill="#1B2838"/>
+  <rect x="165" y="109" width="7" height="14" rx="3.5" fill="#1B2838"/>
+
+  <!-- Schedule rows -->
+  <rect x="125" y="140" width="26" height="4" rx="2" fill="#F5921E"/>
+  <rect x="155" y="140" width="28" height="4" rx="2" fill="#2C3E50"/>
+
+  <rect x="125" y="150" width="16" height="4" rx="2" fill="#2C3E50"/>
+  <rect x="145" y="150" width="38" height="4" rx="2" fill="#F5921E"/>
+
+  <rect x="125" y="160" width="30" height="4" rx="2" fill="#F5921E"/>
+  <rect x="159" y="160" width="24" height="4" rx="2" fill="#2C3E50"/>
+
+  <rect x="125" y="170" width="20" height="4" rx="2" fill="#2C3E50"/>
+  <rect x="149" y="170" width="34" height="4" rx="2" fill="#F5921E"/>
+
+  <!-- Text portion (right side) -->
+  <!-- "Heatmiser" -->
+  <text x="222" y="84"
+        font-family="'Helvetica Neue', Arial, sans-serif"
+        font-size="48"
+        font-weight="700"
+        fill="#1B2838"
+        letter-spacing="-1">Heatmiser</text>
+
+  <!-- "Schedule Manager" -->
+  <text x="222" y="128"
+        font-family="'Helvetica Neue', Arial, sans-serif"
+        font-size="34"
+        font-weight="400"
+        fill="#F5921E"
+        letter-spacing="0">Schedule Manager</text>
+
+  <!-- Thin separator line under Heatmiser -->
+  <line x1="222" y1="94" x2="582" y2="94" stroke="#F5921E" stroke-width="2" opacity="0.4"/>
+</svg>
