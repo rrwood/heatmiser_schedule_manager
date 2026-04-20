@@ -1,0 +1,43 @@
+name: Generate PNG Icons
+
+on:
+  push:
+    paths:
+      - "custom_components/heatmiser_schedule_manager/icon.svg"
+      - "custom_components/heatmiser_schedule_manager/logo.svg"
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y librsvg2-bin
+
+      - name: Generate icon.png (256×256)
+        run: |
+          rsvg-convert -w 256 -h 256 \
+            custom_components/heatmiser_schedule_manager/icon.svg \
+            -o custom_components/heatmiser_schedule_manager/icon.png
+
+      - name: Generate logo.png (600×200)
+        run: |
+          rsvg-convert -w 600 -h 200 \
+            custom_components/heatmiser_schedule_manager/logo.svg \
+            -o custom_components/heatmiser_schedule_manager/logo.png
+
+      - name: Commit PNGs if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add custom_components/heatmiser_schedule_manager/icon.png \
+                  custom_components/heatmiser_schedule_manager/logo.png
+          git diff --cached --quiet || git commit -m "ci: regenerate icon.png and logo.png from SVG"
+          git push

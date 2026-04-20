@@ -153,10 +153,38 @@ def _build_profile_info(
     return profile_info
 
 
+def _lookup_profile(profiles: dict, profile_id: int):
+    """Look up a profile by integer ID, handling string keys and list-wrapped values.
+
+    NeoHub firmware updates have been observed to change the profile dict format:
+    - Keys may be strings ("6") instead of integers (6)
+    - Values may be wrapped in a single-element list ([profile_obj]) instead of bare objects
+    """
+    profile = profiles.get(profile_id) or profiles.get(str(profile_id))
+    if profile is None:
+        _LOGGER.debug(
+            "Profile id=%s not found. Available keys: %s (types: %s)",
+            profile_id,
+            list(profiles.keys())[:10],
+            list({type(k).__name__ for k in profiles.keys()}),
+        )
+        return None
+    if isinstance(profile, list):
+        _LOGGER.debug(
+            "Profile id=%s value is a list (len=%d); unwrapping first element. "
+            "This suggests a NeoHub firmware format change.",
+            profile_id, len(profile),
+        )
+        profile = profile[0] if profile else None
+    return profile
+
+
 def _find_profile_by_name(profiles: dict, name: str):
     """Return (profile_id, profile) for the first profile matching name, or (None, None)."""
     for pid, p in profiles.items():
-        if p.name == name:
+        if isinstance(p, list):
+            p = p[0] if p else None
+        if p is not None and p.name == name:
             return pid, p
     return None, None
 
@@ -201,7 +229,7 @@ async def _log_profile_after_refresh(coordinator, profile_id: int, profile_name:
     try:
         _, all_live_data = coordinator.data
         profiles = all_live_data.get(ATTR_PROFILES, {})
-        profile = profiles.get(profile_id)
+        profile = _lookup_profile(profiles, profile_id)
         if profile is None:
             _LOGGER.debug("  Profile id=%s not found in post-refresh data", profile_id)
             return
@@ -398,7 +426,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return
 
         # Named profile — update it directly
-        profile = profiles.get(profile_id)
+        profile = _lookup_profile(profiles, profile_id)
         if profile is None:
             raise HomeAssistantError(
                 f"Profile {profile_id} for device '{device_name}' not found in hub data."
@@ -504,7 +532,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 updated_device = coordinator.data[0].get(device_name)
                 await updated_device.set_profile_id(new_id)
         else:
-            profile = hub_profiles.get(profile_id)
+            profile = _lookup_profile(hub_profiles, profile_id)
             if profile is None:
                 raise HomeAssistantError(f"Profile {profile_id} for '{device_name}' not found.")
             msg = {"STORE_PROFILE": {"ID": profile_id, "info": profile_info, "name": profile.name}}
@@ -545,7 +573,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raw_profile = profile_0_map.get(device.device_id)
             profile_name = "per-device profile 0"
         else:
-            raw_profile = hub_profiles.get(profile_id)
+            raw_profile = _lookup_profile(hub_profiles, profile_id)
             profile_name = getattr(raw_profile, "name", str(profile_id))
 
         _LOGGER.info(
