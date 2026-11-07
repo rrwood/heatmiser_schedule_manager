@@ -85,6 +85,85 @@ def _schedule_format_key(schedule_format) -> str:
     return schedule_format.name.lower()
 
 
+def _get_field(obj, name, default=None):
+    """Get a field from a dict, SimpleNamespace, or any object — robust to firmware format changes."""
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _items(obj):
+    """Return (key, value) pairs from a dict or SimpleNamespace (or empty list)."""
+    if obj is None:
+        return []
+    if isinstance(obj, dict):
+        return list(obj.items())
+    if hasattr(obj, "__dict__"):
+        return list(vars(obj).items())
+    return []
+
+
+def _unwrap_profile(p):
+    """Unwrap a list-wrapped profile value to the bare profile object."""
+    if isinstance(p, list):
+        return p[0] if p else None
+    return p
+
+
+def _get_info(profile):
+    """Extract the 'info' object from a profile, handling both new (info) and old (profiles[0]) formats."""
+    if profile is None:
+        return None
+    # New firmware: profile.info is a per-day object/dict
+    info = _get_field(profile, "info")
+    if info is not None:
+        return info
+    # Old firmware: profile.profiles[0]
+    profs = _get_field(profile, "profiles")
+    if profs:
+        if isinstance(profs, list):
+            return profs[0] if profs else None
+        return profs
+    return None
+
+
+def _extract_day_info(profile, slot: str, heating_levels: int) -> dict | None:
+    """Extract a day's level dict from a profile object, preserving exact hub key names.
+
+    Returns the raw {level_name: value} dict from the hub without remapping,
+    so preserved days are round-tripped with their original label assignments intact.
+    """
+    info = _get_info(profile)
+    if info is None:
+        return None
+
+    # Get the day's data from info (dict or SimpleNamespace)
+    if isinstance(info, dict):
+        day_data = info.get(slot)
+    else:
+        day_data = getattr(info, slot, None)
+    if day_data is None:
+        return None
+
+    # Convert day_data to a plain dict (handles both dict and SimpleNamespace)
+    if isinstance(day_data, dict):
+        items = day_data.items()
+    elif hasattr(day_data, "__dict__"):
+        items = vars(day_data).items()
+    else:
+        return None
+
+    # Hub returns 4-element arrays [time, temp, extra, flag] for existing slots,
+    # but STORE_PROFILE only accepts 2-element arrays [time, temp].
+    # Truncate to avoid silent write failures from malformed payloads.
+    return {
+        key: value[:2] if isinstance(value, (list, tuple)) and len(value) > 2 else value
+        for key, value in items
+    }
+
+
 def _build_day_info(setpoints: list[dict], heating_levels: int) -> dict:
     """Build a STORE_PROFILE day dict from a list of {time, temp} setpoints."""
     level_names = HEATING_LEVELS_4 if heating_levels <= 4 else HEATING_LEVELS_6
@@ -96,32 +175,6 @@ def _build_day_info(setpoints: list[dict], heating_levels: int) -> dict:
         else:
             result[name] = ["24:00", 5]
     return result
-
-
-def _extract_day_info(profile, slot: str, heating_levels: int) -> dict | None:
-    """Extract a day's level dict from a profile object, preserving exact hub key names.
-
-    Returns the raw {level_name: value} dict from the hub without remapping,
-    so preserved days are round-tripped with their original label assignments intact.
-    """
-    if hasattr(profile, "info"):
-        info = profile.info
-    elif hasattr(profile, "profiles") and profile.profiles:
-        info = profile.profiles[0]
-    else:
-        return None
-
-    day_data = getattr(info, slot, None)
-    if day_data is None:
-        return None
-
-    # Hub returns 4-element arrays [time, temp, extra, flag] for existing slots,
-    # but STORE_PROFILE only accepts 2-element arrays [time, temp].
-    # Truncate to avoid silent write failures from malformed payloads.
-    return {
-        key: value[:2] if isinstance(value, (list, tuple)) and len(value) > 2 else value
-        for key, value in day_data.__dict__.items()
-    }
 
 
 def _build_profile_info(
@@ -153,14 +206,49 @@ def _build_profile_info(
     return profile_info
 
 
-def _lookup_profile(profiles: dict, profile_id: int):
-    """Look up a profile by integer ID, handling string keys and list-wrapped values.
+def _lookup_profile(profiles, profile_id: int):
+    """Look up a profile by integer ID across multiple possible hub formats.
 
     NeoHub firmware updates have been observed to change the profile dict format:
-    - Keys may be strings ("6") instead of integers (6)
+    - Keys may be integers (6), strings ("6"), or profile names ("HSM_En Suite Bathroom")
     - Values may be wrapped in a single-element list ([profile_obj]) instead of bare objects
+    - When keyed by name, the PROFILE_ID must be read from each profile object's attribute
     """
-    profile = profiles.get(profile_id) or profiles.get(str(profile_id))
+    if profiles is None:
+        return None
+
+    # Convert SimpleNamespace to dict if needed
+    if not isinstance(profiles, dict):
+        if hasattr(profiles, "__dict__"):
+            profiles = vars(profiles)
+        else:
+            return None
+
+    # Direct lookup by int or string key
+    profile = profiles.get(profile_id)
+    if profile is None:
+        profile = profiles.get(str(profile_id))
+
+    # Fallback: search by PROFILE_ID attribute (firmware keys dict by profile name)
+    if profile is None:
+        for key, p in profiles.items():
+            p = _unwrap_profile(p)
+            if p is None:
+                continue
+            pid = _get_field(p, "PROFILE_ID") or _get_field(p, "profile_id")
+            if pid is not None:
+                try:
+                    if int(pid) == int(profile_id):
+                        _LOGGER.debug(
+                            "Profile id=%s found via PROFILE_ID attribute under key '%s' "
+                            "(NeoHub firmware keys profiles by name)",
+                            profile_id, key,
+                        )
+                        profile = p
+                        break
+                except (ValueError, TypeError):
+                    continue
+
     if profile is None:
         _LOGGER.debug(
             "Profile id=%s not found. Available keys: %s (types: %s)",
@@ -169,6 +257,8 @@ def _lookup_profile(profiles: dict, profile_id: int):
             list({type(k).__name__ for k in profiles.keys()}),
         )
         return None
+
+    profile = _unwrap_profile(profile)
     if isinstance(profile, list):
         _LOGGER.debug(
             "Profile id=%s value is a list (len=%d); unwrapping first element. "
@@ -179,13 +269,24 @@ def _lookup_profile(profiles: dict, profile_id: int):
     return profile
 
 
-def _find_profile_by_name(profiles: dict, name: str):
+def _find_profile_by_name(profiles, name: str):
     """Return (profile_id, profile) for the first profile matching name, or (None, None)."""
+    if profiles is None:
+        return None, None
+    if not isinstance(profiles, dict):
+        if hasattr(profiles, "__dict__"):
+            profiles = vars(profiles)
+        else:
+            return None, None
     for pid, p in profiles.items():
-        if isinstance(p, list):
-            p = p[0] if p else None
-        if p is not None and p.name == name:
-            return pid, p
+        p = _unwrap_profile(p)
+        if p is None:
+            continue
+        p_name = _get_field(p, "name") or _get_field(p, "NAME")
+        if p_name == name:
+            # Prefer the profile's own PROFILE_ID if available, else the dict key
+            own_id = _get_field(p, "PROFILE_ID") or _get_field(p, "profile_id")
+            return (own_id if own_id is not None else pid), p
     return None, None
 
 
@@ -208,12 +309,11 @@ def _log_extract_debug(source_profile, slots: list[str], heating_levels: int) ->
         return
     # Log raw object type so we can see its structure
     _LOGGER.debug("  source_profile type: %s", type(source_profile))
-    if hasattr(source_profile, "info"):
+    info = _get_info(source_profile)
+    if info is not None:
         _LOGGER.debug("  source_profile.info type: %s  attrs: %s",
-                      type(source_profile.info),
-                      [a for a in dir(source_profile.info) if not a.startswith("_")])
-    elif hasattr(source_profile, "profiles"):
-        _LOGGER.debug("  source_profile.profiles: %s", source_profile.profiles)
+                      type(info),
+                      [a for a in dir(info) if not a.startswith("_")] if hasattr(info, "__dir__") else list(_items(info))[:10])
     for slot in slots:
         extracted = _extract_day_info(source_profile, slot, heating_levels)
         if extracted is None:
@@ -233,11 +333,16 @@ async def _log_profile_after_refresh(coordinator, profile_id: int, profile_name:
         if profile is None:
             _LOGGER.debug("  Profile id=%s not found in post-refresh data", profile_id)
             return
-        for slot in [a for a in dir(profile.info) if not a.startswith("_")]:
-            slot_data = getattr(profile.info, slot, None)
+        info = _get_info(profile)
+        if info is None:
+            _LOGGER.debug("  Profile id=%s has no info/profiles attribute", profile_id)
+            return
+        for slot, slot_data in _items(info):
             if slot_data is None:
                 continue
-            if hasattr(slot_data, "__dict__"):
+            if isinstance(slot_data, dict):
+                _LOGGER.debug("  slot=%-12s  %s", slot, slot_data)
+            elif hasattr(slot_data, "__dict__"):
                 _LOGGER.debug("  slot=%-12s  %s", slot, slot_data.__dict__)
             else:
                 _LOGGER.debug("  slot=%-12s  %s", slot, slot_data)
@@ -432,17 +537,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 f"Profile {profile_id} for device '{device_name}' not found in hub data."
             )
 
+        hub_profile_name = _get_field(profile, "name") or str(profile_id)
         _log_extract_debug(profile, slots, heating_levels)
         profile_info = _build_profile_info(
             profile, slots, target_slot, new_day_info, heating_levels
         )
-        _log_profile_slots(f"STORE_PROFILE payload — profile '{profile.name}' id={profile_id}", profile_info)
+        _log_profile_slots(f"STORE_PROFILE payload — profile '{hub_profile_name}' id={profile_id}", profile_info)
 
         msg = {
             "STORE_PROFILE": {
                 "ID": profile_id,
                 "info": profile_info,
-                "name": profile.name,
+                "name": hub_profile_name,
             }
         }
         await hub._send(msg, {"result": "profile created"})  # noqa: SLF001
@@ -453,7 +559,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             target_slot, day, device_name, applied,
         )
         await coordinator.async_request_refresh()
-        await _log_profile_after_refresh(coordinator, profile_id, profile.name, heating_levels)
+        await _log_profile_after_refresh(coordinator, profile_id, hub_profile_name, heating_levels)
 
     async def async_handle_set_week_schedule(call: ServiceCall) -> None:
         """Handle the set_week_schedule service call — applies one profile to every slot."""
@@ -535,7 +641,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             profile = _lookup_profile(hub_profiles, profile_id)
             if profile is None:
                 raise HomeAssistantError(f"Profile {profile_id} for '{device_name}' not found.")
-            msg = {"STORE_PROFILE": {"ID": profile_id, "info": profile_info, "name": profile.name}}
+            msg = {"STORE_PROFILE": {"ID": profile_id, "info": profile_info, "name": _get_field(profile, "name") or str(profile_id)}}
             await hub._send(msg, {"result": "profile created"})  # noqa: SLF001
 
         applied = f"profile '{profile_name}'" if profile_name else "custom schedule"
@@ -574,7 +680,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             profile_name = "per-device profile 0"
         else:
             raw_profile = _lookup_profile(hub_profiles, profile_id)
-            profile_name = getattr(raw_profile, "name", str(profile_id))
+            profile_name = _get_field(raw_profile, "name") or str(profile_id)
 
         _LOGGER.info(
             "=== Schedule for '%s' | profile: %s (id=%s) | format: %s ===",
@@ -583,18 +689,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         schedule = {}
         if raw_profile is not None:
-            if hasattr(raw_profile, "info"):
-                info = raw_profile.info
-            elif hasattr(raw_profile, "profiles") and raw_profile.profiles:
-                info = raw_profile.profiles[0]
-            else:
-                info = None
+            info = _get_info(raw_profile)
 
             if info is not None:
-                for slot in sorted(vars(info).keys()):
-                    day_data = getattr(info, slot)
+                for slot, day_data in sorted(_items(info)):
+                    if day_data is None:
+                        continue
+                    if isinstance(day_data, dict):
+                        level_items = sorted(day_data.items())
+                    elif hasattr(day_data, "__dict__"):
+                        level_items = sorted(vars(day_data).items())
+                    else:
+                        continue
                     day_levels = []
-                    for level_name, value in sorted(vars(day_data).items()):
+                    for level_name, value in level_items:
                         time_val = value[0] if len(value) > 0 else "?"
                         temp_val = value[1] if len(value) > 1 else "?"
                         active = not value[3] if len(value) > 3 else True
