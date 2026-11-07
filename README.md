@@ -249,6 +249,19 @@ logger:
 
 ---
 
+## Changelog
+
+### v1.0.2 (2026-11-07)
+- **Fix**: NeoHub firmware compatibility — the GET_PROFILES response format changed to key profiles by name instead of ID, and profile objects are now SimpleNamespace with an `info` attribute. The integration now handles both old and new formats.
+
+### v1.0.1 (2026-04-20)
+- Initial fix attempt for profile lookup after NeoHub firmware update.
+
+### v1.0.0 (2026-04-02)
+- Initial release.
+
+---
+
 ## License
 
 MIT
